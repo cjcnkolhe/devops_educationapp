@@ -1,0 +1,40 @@
+
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: educationapp
+  namespace: default
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: educationapp
+
+  template:
+    metadata:
+      labels:
+        app: educationapp
+
+    spec:
+      containers:
+        - name: educationapp
+
+          image: nanducjc123/educationapprepo:latest
+
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
