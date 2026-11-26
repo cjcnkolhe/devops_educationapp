@@ -122,6 +122,31 @@ pipeline {
                 }
             }
         }
+ // 6. Docker Pull & Run
+        stage('Docker Pull & Run') {
+            steps {
+                sh '''
+                    echo "Pulling Docker Image..."
+
+                    docker pull $DOCKER_IMAGE:$BUILD_NUMBER
+
+                    echo "Stopping Old Container..."
+                    docker stop $APP_NAME || true
+                    docker rm $APP_NAME || true
+
+                    echo "Running New Container..."
+
+                    docker run -d \
+                    --name $APP_NAME \
+                    --restart unless-stopped \
+                    -p $APP_PORT:8080 \
+                    $DOCKER_IMAGE:$BUILD_NUMBER
+
+                    echo "Application Deployment Completed!"
+                    docker ps
+                '''
+            }
+        }
 }
 }
    
