@@ -22,7 +22,7 @@ pipeline {
 
         // Kubernetes Application Configuration
         APP_NAME = 'educationapp'
-        APP_PORT = '8080'
+        APP_PORT = '8082'
         SERVICE_NAME = 'educationapp-service'
     }
 
@@ -139,7 +139,7 @@ pipeline {
                     docker run -d \
                     --name $APP_NAME \
                     --restart unless-stopped \
-                    -p $APP_PORT:8082 \
+                    -p $APP_PORT:8080 \
                     $DOCKER_IMAGE:$BUILD_NUMBER
 
                     echo "Application Deployment Completed!"
