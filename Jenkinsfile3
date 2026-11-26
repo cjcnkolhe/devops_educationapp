@@ -139,7 +139,7 @@ pipeline {
                     docker run -d \
                     --name $APP_NAME \
                     --restart unless-stopped \
-                    -p $APP_PORT:8080 \
+                    -p $APP_PORT:8082 \
                     $DOCKER_IMAGE:$BUILD_NUMBER
 
                     echo "Application Deployment Completed!"
