@@ -8,63 +8,44 @@ pipeline {
     }
 
     environment {
-        // Docker Hub Configuration
         DOCKER_IMAGE = 'nanducjc123/educationapprepo'
 
-        // SonarQube Configuration
         SONAR_HOST = 'http://13.206.247.4:9000'
         SONAR_PROJECT_KEY = 'my-project'
 
-        // AWS EKS Configuration
         AWS_REGION = 'ap-south-1'
         EKS_CLUSTER = 'java-eks-cluster'
-        K8S_NAMESPACE = 'default'
 
-        // Kubernetes Application Configuration
+        K8S_NAMESPACE = 'default'
         APP_NAME = 'educationapp'
-        APP_PORT = '8082'
         SERVICE_NAME = 'educationapp-service'
+
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
     }
 
     stages {
 
-        // 1. Git Checkout
         stage('Git Checkout') {
             steps {
                 git branch: 'master',
-                    url: 'https://github.com/cjcnkolhe/educationapp.git'
+                    url: 'https://github.com/cjcnkolhe/devops_educationrepo.git'
             }
         }
 
-        // 2. Maven Build
         stage('Maven Build') {
             steps {
-                sh '''
-                    echo "Checking Java Version..."
-                    java -version
-
-                    echo "Checking Maven Version..."
-                    mvn -version
-
-                    echo "Building Spring Boot Application..."
-                    mvn clean package
-                '''
+                sh 'mvn clean package'
             }
         }
 
-        // 3. SonarQube Analysis
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([
-                    string(
-                        credentialsId: 'sonar-token',
-                        variable: 'SONAR_TOKEN'
-                    )
+                    string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
                 ]) {
                     sh '''
                         mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
                         -Dsonar.projectKey=$SONAR_PROJECT_KEY \
-                        -Dsonar.projectName=$SONAR_PROJECT_KEY \
                         -Dsonar.host.url=$SONAR_HOST \
                         -Dsonar.token=$SONAR_TOKEN \
                         -Dsonar.java.binaries=target/classes
@@ -73,19 +54,15 @@ pipeline {
             }
         }
 
-        // 4. Docker Build
         stage('Docker Build') {
             steps {
                 sh '''
-                    docker build \
-                    -t $DOCKER_IMAGE:$BUILD_NUMBER \
-                    -t $DOCKER_IMAGE:latest .
+                    docker build -t $DOCKER_IMAGE:$BUILD_NUMBER .
                 '''
             }
         }
 
-        // 5. Docker Login & Push
-        stage('Docker Login & Push') {
+        stage('Docker Push') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -95,14 +72,10 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        set +x
-
                         echo "$DOCKER_PASS" | docker login \
-                        -u "$DOCKER_USER" \
-                        --password-stdin
+                        -u "$DOCKER_USER" --password-stdin
 
                         docker push $DOCKER_IMAGE:$BUILD_NUMBER
-                        docker push $DOCKER_IMAGE:latest
 
                         docker logout
                     '''
@@ -110,48 +83,25 @@ pipeline {
             }
         }
 
-        // 6. Docker Pull & Run
-        stage('Docker Pull & Run') {
-            steps {
-                sh '''
-                    docker pull $DOCKER_IMAGE:$BUILD_NUMBER
-
-                    docker stop $APP_NAME || true
-                    docker rm $APP_NAME || true
-
-                    docker run -d \
-                    --name $APP_NAME \
-                    --restart unless-stopped \
-                    -p $APP_PORT:8080 \
-                    $DOCKER_IMAGE:$BUILD_NUMBER
-
-                    docker ps
-                '''
-            }
-        }
-
-        // 7. AWS EKS Connect
         stage('AWS EKS Connect') {
             steps {
                 sh '''
-                    export KUBECONFIG=$HOME/.kube/config
-
-                    mkdir -p $HOME/.kube
+                    mkdir -p "$(dirname "$KUBECONFIG")"
 
                     aws eks update-kubeconfig \
                     --region $AWS_REGION \
-                    --name $EKS_CLUSTER
+                    --name $EKS_CLUSTER \
+                    --kubeconfig $KUBECONFIG
 
                     kubectl get nodes
                 '''
             }
         }
 
-        // 8. Kubernetes Deploy
         stage('Kubernetes Deploy') {
             steps {
                 sh '''
-                    sed -i -E "s|image: .*|image: $DOCKER_IMAGE:$BUILD_NUMBER|" \
+                    sed -i "s|image: .*|image: $DOCKER_IMAGE:$BUILD_NUMBER|" \
                     k8s/deployment.yaml
 
                     kubectl apply -f k8s/deployment.yaml \
@@ -163,13 +113,11 @@ pipeline {
             }
         }
 
-        // 9. Verification
         stage('Verification') {
             steps {
                 sh '''
                     kubectl rollout status deployment/$APP_NAME \
-                    -n $K8S_NAMESPACE \
-                    --timeout=300s
+                    -n $K8S_NAMESPACE --timeout=300s
 
                     kubectl get pods -n $K8S_NAMESPACE
 
@@ -178,7 +126,6 @@ pipeline {
             }
         }
 
-        // 10. Application URL
         stage('Application URL') {
             steps {
                 sh '''
@@ -193,6 +140,16 @@ pipeline {
                     fi
                 '''
             }
+        }
+    }
+
+    post {
+        success {
+            echo 'Application deployed successfully on AWS EKS!'
+        }
+
+        failure {
+            echo 'Pipeline failed! Check Console Output.'
         }
     }
 }
