@@ -147,6 +147,66 @@ pipeline {
                 '''
             }
         }
+    stage('AWS EKS Connect') {
+            steps {
+                sh '''
+                    mkdir -p "$(dirname "$KUBECONFIG")"
+
+                    aws eks update-kubeconfig \
+                    --region $AWS_REGION \
+                    --name $EKS_CLUSTER \
+                    --kubeconfig $KUBECONFIG
+
+                    kubectl get nodes
+                '''
+            }
+        }
+
+        stage('Kubernetes Deploy') {
+            steps {
+                sh '''
+                    sed -i "s|image: .*|image: $DOCKER_IMAGE:$BUILD_NUMBER|" \
+                    k8s/deployment.yaml
+
+                    kubectl apply -f k8s/deployment.yaml \
+                    -n $K8S_NAMESPACE
+
+                    kubectl apply -f k8s/service.yaml \
+                    -n $K8S_NAMESPACE
+                '''
+            }
+        }
+
+        stage('Verification') {
+            steps {
+                sh '''
+                    kubectl rollout status deployment/$APP_NAME \
+                    -n $K8S_NAMESPACE --timeout=300s
+
+                    kubectl get pods -n $K8S_NAMESPACE
+
+                    kubectl get svc -n $K8S_NAMESPACE
+                '''
+            }
+        }
+
+        stage('Application URL') {
+            steps {
+                sh '''
+                    LB_HOST=$(kubectl get svc $SERVICE_NAME \
+                    -n $K8S_NAMESPACE \
+                    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+                    if [ -n "$LB_HOST" ]; then
+                        echo "Application URL: http://$LB_HOST"
+                    else
+                        echo "LoadBalancer is still provisioning."
+                    fi
+                '''
+            }
+        }
+    }
+
 }
 }
    
