@@ -47,7 +47,6 @@ pipeline {
                     mvn -version
 
                     echo "Building Spring Boot Application..."
-
                     mvn clean package
                 '''
             }
@@ -63,16 +62,12 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "Starting SonarQube Analysis..."
-
                         mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
                         -Dsonar.projectKey=$SONAR_PROJECT_KEY \
                         -Dsonar.projectName=$SONAR_PROJECT_KEY \
                         -Dsonar.host.url=$SONAR_HOST \
                         -Dsonar.token=$SONAR_TOKEN \
                         -Dsonar.java.binaries=target/classes
-
-                        echo "SonarQube Analysis Completed!"
                     '''
                 }
             }
@@ -82,13 +77,9 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    echo "Building Docker Image..."
-
                     docker build \
                     -t $DOCKER_IMAGE:$BUILD_NUMBER \
                     -t $DOCKER_IMAGE:latest .
-
-                    echo "Docker Build Completed!"
                 '''
             }
         }
@@ -110,31 +101,23 @@ pipeline {
                         -u "$DOCKER_USER" \
                         --password-stdin
 
-                        echo "Pushing Docker Image..."
-
                         docker push $DOCKER_IMAGE:$BUILD_NUMBER
                         docker push $DOCKER_IMAGE:latest
 
                         docker logout
-
-                        echo "Docker Push Completed!"
                     '''
                 }
             }
         }
- // 6. Docker Pull & Run
+
+        // 6. Docker Pull & Run
         stage('Docker Pull & Run') {
             steps {
                 sh '''
-                    echo "Pulling Docker Image..."
-
                     docker pull $DOCKER_IMAGE:$BUILD_NUMBER
 
-                    echo "Stopping Old Container..."
                     docker stop $APP_NAME || true
                     docker rm $APP_NAME || true
-
-                    echo "Running New Container..."
 
                     docker run -d \
                     --name $APP_NAME \
@@ -142,30 +125,33 @@ pipeline {
                     -p $APP_PORT:8080 \
                     $DOCKER_IMAGE:$BUILD_NUMBER
 
-                    echo "Application Deployment Completed!"
                     docker ps
                 '''
             }
         }
-    stage('AWS EKS Connect') {
+
+        // 7. AWS EKS Connect
+        stage('AWS EKS Connect') {
             steps {
                 sh '''
-                    mkdir -p "$(dirname "$KUBECONFIG")"
+                    export KUBECONFIG=$HOME/.kube/config
+
+                    mkdir -p $HOME/.kube
 
                     aws eks update-kubeconfig \
                     --region $AWS_REGION \
-                    --name $EKS_CLUSTER \
-                    --kubeconfig $KUBECONFIG
+                    --name $EKS_CLUSTER
 
                     kubectl get nodes
                 '''
             }
         }
 
+        // 8. Kubernetes Deploy
         stage('Kubernetes Deploy') {
             steps {
                 sh '''
-                    sed -i "s|image: .*|image: $DOCKER_IMAGE:$BUILD_NUMBER|" \
+                    sed -i -E "s|image: .*|image: $DOCKER_IMAGE:$BUILD_NUMBER|" \
                     k8s/deployment.yaml
 
                     kubectl apply -f k8s/deployment.yaml \
@@ -177,11 +163,13 @@ pipeline {
             }
         }
 
+        // 9. Verification
         stage('Verification') {
             steps {
                 sh '''
                     kubectl rollout status deployment/$APP_NAME \
-                    -n $K8S_NAMESPACE --timeout=300s
+                    -n $K8S_NAMESPACE \
+                    --timeout=300s
 
                     kubectl get pods -n $K8S_NAMESPACE
 
@@ -190,6 +178,7 @@ pipeline {
             }
         }
 
+        // 10. Application URL
         stage('Application URL') {
             steps {
                 sh '''
@@ -206,7 +195,4 @@ pipeline {
             }
         }
     }
-
 }
-}
-   
